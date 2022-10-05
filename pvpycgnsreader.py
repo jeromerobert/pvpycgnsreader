@@ -134,9 +134,16 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         coords = self._read_grid_coordinates(zone)
         self._np_arrays.append(coords)
         pug.SetPoints(coords)
-        celltype = self._reader.read_path(["Base", zone, "Elem"])[0]
+        elem_nodes = cgns.child_with_label(self._reader.node(["Base", zone]), "Elements_t")
+        if len(elem_nodes) > 1:
+            print("WARNING: Multiple types of elements not supported")
+        if len(elem_nodes) == 0:
+            print("WARNING: No elements founds")
+            return pug
+        elem_name = elem_nodes[0].name
+        celltype = self._reader.read_path(["Base", zone, elem_name])[0]
         cells = (
-            self._reader.read_path(["Base", zone, "Elem", "ElementConnectivity"]) - 1
+            self._reader.read_path(["Base", zone, elem_name, "ElementConnectivity"]) - 1
         )
         cellsize = CELL_TYPE[celltype][1]
         cells = cells.reshape(-1, cellsize)

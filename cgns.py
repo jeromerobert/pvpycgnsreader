@@ -220,6 +220,12 @@ def _get_path(cgnsnode, path):
     else:
         return _get_path(r, path[1:])
 
+def child_with_label(node, label):
+    r = []
+    for c in node.children.values():
+        if c.label == label:
+            r.append(c)
+    return r
 
 class Reader:
     def __init__(self, filename):
@@ -228,6 +234,9 @@ class Reader:
 
     def node(self, path=[]):
         """Return the meta data of a node"""
+        # FIXME Using names to navigates in a CGNS files is wrong. I should use
+        # the label. This needs to modify the whole logic for the pvpycgnsreader
+        # module.
         return _get_path(self.data, path)
 
     def read_array(self, node):
