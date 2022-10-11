@@ -71,7 +71,7 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         if self._modified or self._reader is None:
             self._reader = cgns.Reader(self._filename)
             self._modified = False
-        return self._reader.read_path(["Base", "TimeIterValues", "TimeValues"])
+        return self._reader.data_by_labels(["CGNSBase_t", "BaseIterativeData_t", "TimeValues_t"])
 
     def _get_update_time(self, outInfo):
         executive = self.GetExecutive()
@@ -176,10 +176,14 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         zonepointers = self._reader.read_path(
             ["Base", "TimeIterValues", "ZonePointers"]
         )
+        if zonepointers is None:
+            zonelist = [z.name for z in self._reader.nodes_by_labels(["CGNSBase_t", "Zone_t"])]
+        else:
+            zonelist = zonepointers[timeid]
         mbds = vtkMultiBlockDataSet.GetData(outInfoVec, 0)
         mbds.GetInformation().Set(mbds.DATA_TIME_STEP(), data_time)
         self._np_arrays = []
-        for iz, zone in enumerate(zonepointers[timeid]):
+        for iz, zone in enumerate(zonelist):
             if zone is None:
                 continue
             zonenode = self._reader.node(["Base", zone])
@@ -204,9 +208,7 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
 
         mbds = vtkMultiBlockDataSet.GetData(outInfoVec, 0)
         iz = 0
-        for zone in self._reader.node(["Base"]).children.values():
-            if zone.label != "Zone_t":
-                continue
+        for zone in self._reader.nodes_by_labels(["CGNSBase_t", "Zone_t"]):
             ug = self._create_unstructured_grid(zone.name)
             mbds.SetBlock(iz, ug.VTKObject)
             mbds.GetMetaData(iz).Set(mbds.NAME(), zone.name)

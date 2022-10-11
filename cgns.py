@@ -71,12 +71,15 @@ _CGNS_TO_NUMPY = {
 
 
 # Possible return codes
+# https://cgns.github.io/CGNS_docs_current/cgio/errors.html
 CGNS_STATUS = {
     1: CGNSError,
     2: CGNSNodeNotFound,
     3: CGNSIncorrectPath,
     4: CGNSNoIndexDim,
     76: Exception("H5Gopen:open of a node group failed"),
+    71: Exception("Node attribute doesn't exist"),
+    85: Exception("H5Dread:read of node data failed"),
 }
 
 
@@ -220,6 +223,20 @@ def _get_path(cgnsnode, path):
     else:
         return _get_path(r, path[1:])
 
+
+def _by_labels(cgnsnode, labels):
+    r = child_with_label(cgnsnode, labels[0])
+    if len(r) == 0:
+        return []
+    elif len(labels) == 1:
+        return r
+    else:
+        l = []
+        for c in r:
+            l.extend(_by_labels(c, labels[1:]))
+        return l
+
+
 def child_with_label(node, label):
     r = []
     for c in node.children.values():
@@ -227,10 +244,18 @@ def child_with_label(node, label):
             r.append(c)
     return r
 
+
 class Reader:
     def __init__(self, filename):
         # FIXME add a close method
         self.cgio_num, self.data = _cgns_wrapper.open(filename)
+
+    def nodes_by_labels(self, labels=[]):
+        return _by_labels(self.data, labels)
+
+    def data_by_labels(self, labels=[]):
+        n = self.nodes_by_labels(labels)
+        return None if len(n) == 0 else self.read_array(n[0])
 
     def node(self, path=[]):
         """Return the meta data of a node"""
