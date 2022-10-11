@@ -157,16 +157,27 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         assert ug.GetNumberOfCells() == ncells, (ug.GetNumberOfCells(), ncells)
         return pug
 
+    def _grid_location(self, node):
+        r = "Vertex"
+        gl = cgns.child_with_label(node, "GridLocation_t")
+        if len(gl) > 0:
+            r = self._reader.read_array(gl[0]).tobytes().decode()
+        return r
+
     def _add_cell_data(self, zone, node, ug):
         if node.label != "FlowSolution_t":
             return
+        gl = self._grid_location(node)
         for c in node.children.values():
             if c.dtype == "C1":
                 continue
             self._arrayselection.AddArray(c.name)
             if self._arrayselection.ArrayIsEnabled(c.name):
                 a = self._reader.read_path(["Base", zone.name, node.name, c.name])
-                ug.GetCellData().append(a, c.name)
+                if gl == "Vertex":
+                    ug.GetPointData().append(a, c.name)
+                else:
+                    ug.GetCellData().append(a, c.name)
 
     def _request_iter_data(self, timesteps, outInfoVec):
         from vtkmodules.vtkCommonDataModel import vtkMultiBlockDataSet

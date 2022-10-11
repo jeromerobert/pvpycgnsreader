@@ -77,6 +77,7 @@ CGNS_STATUS = {
     2: CGNSNodeNotFound,
     3: CGNSIncorrectPath,
     4: CGNSNoIndexDim,
+    33: Exception("Node had no data associated with it"),
     76: Exception("H5Gopen:open of a node group failed"),
     71: Exception("Node attribute doesn't exist"),
     85: Exception("H5Dread:read of node data failed"),
