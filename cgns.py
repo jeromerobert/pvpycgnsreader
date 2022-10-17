@@ -102,12 +102,20 @@ class _Prefixer:
         return getattr(self.delegate, self.prefix + name)
 
 
+def _pvversion():
+    """Return the paraview version string"""
+    import paraview
+    maj = paraview.servermanager.vtkSMProxyManager.GetVersionMajor()
+    mn = paraview.servermanager.vtkSMProxyManager.GetVersionMinor()
+    return "{}.{}".format(maj, mn)
+
+
 class _CGNSWrappers:
     def __init__(self):
         # This is the name of the CGNS lib in Paraview
-        libname, self.prefix, self.cgsize_t = "vtkcgns-pv5.9", "vtkcgns_cgio_", c_size_t
+        libname, self.prefix, self.cgsize_t = "vtkcgns-pv"+_pvversion(), "vtkcgns_cgio_", c_size_t
         # For debug
-        # libname, self.prefix, self.cgsize_t = "/home/robert/elfipole/CGNS/build/src/libcgns.so", "cgio_", c_int
+        # libname, self.prefix, self.cgsize_t = "/path/to/libcgns.so", "cgio_", c_int
         self.lib = _load_lib(libname)
         # ier = cgio_open_file(const char *filename, int file_mode, int file_type, int *cgio_num);
         self._proto("open_file", [c_char_p, c_int, c_int, POINTER(c_int)])
