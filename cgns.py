@@ -104,9 +104,9 @@ class _Prefixer:
 
 def _pvversion():
     """Return the paraview version string"""
-    import paraview
-    maj = paraview.servermanager.vtkSMProxyManager.GetVersionMajor()
-    mn = paraview.servermanager.vtkSMProxyManager.GetVersionMinor()
+    from paraview import servermanager
+    maj = servermanager.vtkSMProxyManager.GetVersionMajor()
+    mn = servermanager.vtkSMProxyManager.GetVersionMinor()
     return "{}.{}".format(maj, mn)
 
 
