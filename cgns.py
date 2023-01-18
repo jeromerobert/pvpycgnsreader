@@ -254,6 +254,14 @@ def child_with_label(node, label):
     return r
 
 
+def child_with_name(node, name):
+    if node is None:
+        return None
+    if isinstance(node, list):
+        node = node[0]
+    return node.children.get(name)
+
+
 class Reader:
     def __init__(self, filename):
         # FIXME add a close method
@@ -274,6 +282,8 @@ class Reader:
         return _get_path(self.data, path)
 
     def read_array(self, node):
+        if node is None:
+            return None
         return _cgns_wrapper.read_data(self.cgio_num, node)
 
     def read_path(self, path):

@@ -71,7 +71,16 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         if self._modified or self._reader is None:
             self._reader = cgns.Reader(self._filename)
             self._modified = False
-        return self._reader.data_by_labels(["CGNSBase_t", "BaseIterativeData_t", "TimeValues_t"])
+        base_iter = self._reader.nodes_by_labels(["CGNSBase_t", "BaseIterativeData_t"])
+        if base_iter is []:
+            return None
+        base_iter = base_iter[0]
+        time_node = cgns.child_with_name(base_iter, "TimeValues")
+        if time_node is None:
+            time_node = cgns.child_with_name(base_iter, "IterationValues")
+        if time_node is None:
+            return None
+        return self._reader.read_array(time_node)
 
     def _get_update_time(self, outInfo):
         executive = self.GetExecutive()
@@ -184,11 +193,12 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
 
         data_time = self._get_update_time(outInfoVec.GetInformationObject(0))
         timeid = np.searchsorted(self._get_timesteps(), data_time)
-        zonepointers = self._reader.read_path(
-            ["Base", "TimeIterValues", "ZonePointers"]
-        )
+        bid_node = self._reader.nodes_by_labels(["CGNSBase_t", "BaseIterativeData_t"])
+        zonepointers = self._reader.read_array(cgns.child_with_name(bid_node,"ZonePointers"))
         if zonepointers is None:
-            zonelist = [z.name for z in self._reader.nodes_by_labels(["CGNSBase_t", "Zone_t"])]
+            # No ZonePointers, we assume one Zone by time step
+            zones = self._reader.nodes_by_labels(["CGNSBase_t", "Zone_t"])
+            zonelist = [zones[timeid].name]
         else:
             zonelist = zonepointers[timeid]
         mbds = vtkMultiBlockDataSet.GetData(outInfoVec, 0)
@@ -207,7 +217,7 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
             fsps = self._reader.read_path(
                 ["Base", zone, "ZoneIterativeData", "FlowSolutionPointers"]
             )
-            flowsolutionid = fsps[timeid]
+            flowsolutionid = None if fsps is None else fsps[timeid]
             if flowsolutionid is None:
                 continue
             flowsol = self._reader.node(["Base", zone, flowsolutionid])
