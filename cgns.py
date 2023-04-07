@@ -34,7 +34,7 @@ def _load_lib(root):
     elif sys.platform == "win32" or sys.platform == "cygwin":
         templates = ["%s.dll", "lib%s.dll"]
     else:
-        templates = ["lib%s.so", "%s.so", "%s"]
+        templates = ["lib%s.so", "lib%s.so.1", "%s.so", "%s"]
     for t in templates:
         try:
             return ctypes.CDLL(t % root)
