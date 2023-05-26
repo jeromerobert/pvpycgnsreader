@@ -72,7 +72,7 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
             self._reader = cgns.Reader(self._filename)
             self._modified = False
         base_iter = self._reader.nodes_by_labels(["CGNSBase_t", "BaseIterativeData_t"])
-        if base_iter is []:
+        if base_iter == []:
             return None
         base_iter = base_iter[0]
         time_node = cgns.child_with_name(base_iter, "TimeValues")
