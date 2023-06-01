@@ -31,6 +31,8 @@ CELL_TYPE = {
     7: (9, 4),  # QUAD_4 / VTK_QUAD
     5: (5, 3),  # TRI_3 / VTK_TRIANGLE
     17: (12, 8),  # HEXA_8 / VTK_HEXAHEDRON
+    12: (14, 5), # PYRA_5 / VTK_PYRAMID
+    14: (15, 4), #PENTA_6 / VTK_PENTAGONAL_PRISM
 }
 
 @smproxy.reader(
