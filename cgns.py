@@ -83,6 +83,9 @@ CGNS_STATUS = {
     85: Exception("H5Dread:read of node data failed"),
 }
 
+class _CGN:
+    def __init__(self, name):
+        self.name = name
 
 def _errcheck(status, fn, arg):
     if status != 0:
@@ -260,6 +263,18 @@ def child_with_name(node, name):
     if isinstance(node, list):
         node = node[0]
     return node.children.get(name)
+
+def find_node(n, args):
+    if len(args) == 0:
+        return n
+    else :
+        if type(args[0]) == _CGN :
+            n = child_with_name(n, args[0].name)
+        else :
+            n = child_with_label(n, args[0])
+        args = args[1:]
+        return find_node(n, args)
+
 
 
 class Reader:

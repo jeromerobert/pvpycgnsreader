@@ -8,6 +8,7 @@ sys.path.append(os.path.dirname(__file__))
 sys.modules.pop("cngs", None)
 import cgns
 import numpy as np
+from cgns import _CGN
 
 
 def createModifiedCallback(anobject):
@@ -127,10 +128,10 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
     def _read_grid_coordinates(self, zone):
         # FIXME: allocate the return array and fill it to avoid a memory peak
         r = []
+        base = self._reader.nodes_by_labels(["CGNSBase_t"])[0]
         for l in ["X", "Y", "Z"]:
-            a = self._reader.read_path(
-                ["Base", zone, "GridCoordinates", "Coordinate" + l]
-            )
+            coord = cgns.find_node(base, [_CGN(zone), "GridCoordinates_t", _CGN("Coordinate" + l)])
+            a = self._reader.read_array(coord)
             r.append(a.astype(np.single).reshape(-1, 1))
         return np.hstack(r)
 
@@ -143,17 +144,19 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         coords = self._read_grid_coordinates(zone)
         self._np_arrays.append(coords)
         pug.SetPoints(coords)
-        elem_nodes = cgns.child_with_label(self._reader.node(["Base", zone]), "Elements_t")
+        #TODO : could have more than 1 thing of Elements_t type
+        base = self._reader.nodes_by_labels(["CGNSBase_t"])[0]
+        elem_nodes = cgns.find_node(base, [_CGN(zone), "Elements_t"])
         if len(elem_nodes) > 1:
             print("WARNING: Multiple types of elements not supported")
         if len(elem_nodes) == 0:
             print("WARNING: No elements founds")
             return pug
         elem_name = elem_nodes[0].name
-        celltype = self._reader.read_path(["Base", zone, elem_name])[0]
-        cells = (
-            self._reader.read_path(["Base", zone, elem_name, "ElementConnectivity"]) - 1
-        )
+        cellt = cgns.find_node(base, [_CGN(zone), _CGN(elem_name)])
+        celltype = self._reader.read_array(cellt)[0]
+        c = cgns.find_node(base, [_CGN(zone), _CGN(elem_name), _CGN("ElementConnectivity")])
+        cells = self._reader.read_array(c) - 1
         cellsize = CELL_TYPE[celltype][1]
         cells = cells.reshape(-1, cellsize)
         ncells = cells.shape[0]
@@ -182,7 +185,9 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
                 continue
             self._arrayselection.AddArray(c.name)
             if self._arrayselection.ArrayIsEnabled(c.name):
-                a = self._reader.read_path(["Base", zone.name, node.name, c.name])
+                base = self._reader.nodes_by_labels(["CGNSBase_t"])[0]
+                n = cgns.find_node(base, [_CGN(zone.name), _CGN(node.name), _CGN(c.name)])
+                a = self._reader.read_array(n)
                 if gl == "Vertex":
                     ug.GetPointData().append(a, c.name)
                 else:
@@ -204,23 +209,24 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         mbds = vtkMultiBlockDataSet.GetData(outInfoVec, 0)
         mbds.GetInformation().Set(mbds.DATA_TIME_STEP(), data_time)
         self._np_arrays = []
+        base = self._reader.nodes_by_labels(["CGNSBase_t"])[0]
         for iz, zone in enumerate(zonelist):
             if zone is None:
                 continue
-            zonenode = self._reader.node(["Base", zone])
+            zonenode = cgns.child_with_name(base, zone)
             if zonenode is None:
                 # The ZonePointer node of the CGNS file contains bullshit
                 continue
             ug = self._create_unstructured_grid(zone)
             mbds.SetBlock(iz, ug.VTKObject)
             mbds.GetMetaData(iz).Set(mbds.NAME(), zone)
-            fsps = self._reader.read_path(
-                ["Base", zone, "ZoneIterativeData", "FlowSolutionPointers"]
-            )
+            fsp = cgns.find_node(base, [_CGN(zone), _CGN("ZoneIterativeData"), _CGN("FlowSolutionPointers")])
+            fsps = self._reader.read_array(fsp)
             flowsolutionid = None if fsps is None else fsps[timeid]
             if flowsolutionid is None:
                 continue
-            flowsol = self._reader.node(["Base", zone, flowsolutionid])
+            flowsol = cgns.find_node(base, [_CGN(zone), _CGN(flowsol)])
+            #flowsol = self._reader.node(["Base", zone, flowsolutionid])
             self._add_cell_data(zonenode, flowsol, ug)
         return 1
 
