@@ -146,30 +146,61 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         coords = self._read_grid_coordinates(zone)
         self._np_arrays.append(coords)
         pug.SetPoints(coords)
-        #TODO : could have more than 1 thing of Elements_t type
         base = self._reader.nodes_by_labels(["CGNSBase_t"])[0]
         elem_nodes = cgns.find_node(base, [_CGN(zone), "Elements_t"])
-        if len(elem_nodes) > 1:
-            print("WARNING: Multiple types of elements not supported")
-        if len(elem_nodes) == 0:
+        nb_elem_nodes = len(elem_nodes)
+        if nb_elem_nodes == 0:
             print("WARNING: No elements founds")
             return pug
         elem_name = elem_nodes[0].name
         cellt = cgns.find_node(base, [_CGN(zone), _CGN(elem_name)])
         celltype = self._reader.read_array(cellt)[0]
-        c = cgns.find_node(base, [_CGN(zone), _CGN(elem_name), _CGN("ElementConnectivity")])
-        cells = self._reader.read_array(c) - 1
-        cellsize = CELL_TYPE[celltype][1]
-        cells = cells.reshape(-1, cellsize)
-        ncells = cells.shape[0]
-        # Array format must be (num_vert1, vert1, vert2, ..., num_vert2, ...)
-        cells = np.hstack([np.full((ncells, 1), cellsize), cells]).reshape(-1)
-        celltypes = np.full((ncells,), CELL_TYPE[celltype][0], dtype=np.ubyte)
-        celllocations = np.cumsum(np.full((ncells,), cellsize, dtype=np.int))
-        self._np_arrays.extend([cells, celltypes, celllocations])
-        pug.SetCells(celltypes, celllocations, cells)
-        assert ug.GetNumberOfCells() == ncells, (ug.GetNumberOfCells(), ncells)
-        return pug
+        if celltype == 20 : #Mixed
+            T = []
+            O = []
+            C = []
+            for i in range(nb_elem_nodes):
+                elem_name = elem_nodes[i].name
+                cellt = cgns.find_node(base, [_CGN(zone), _CGN(elem_name)])
+                celltype = self._reader.read_array(cellt)[0]
+                c = cgns.find_node(base, [_CGN(zone), _CGN(elem_name), _CGN("ElementConnectivity")])
+                c_offset = cgns.find_node(base, [_CGN(zone), _CGN(elem_name), _CGN("ElementStartOffset")])
+                offsets_cgns = self._reader.read_array(c_offset)
+                cells_cgns = self._reader.read_array(c)
+                cells_vtk = np.copy(cells_cgns)-1
+                types_elem = cells_cgns[offsets_cgns[:-1]]
+                types_elem_vtk = np.zeros(len(offsets_cgns)-1)
+                cells_sizes = np.zeros(len(offsets_cgns)-1)
+                for k,(i,j) in CELL_TYPE.items():
+                    elem = np.where(types_elem == k)
+                    cells_vtk[offsets_cgns[elem]] = j
+                    types_elem_vtk[elem] = i
+                    cells_sizes[elem] = j
+                types_elem_vtk = np.array(types_elem_vtk, dtype=np.ubyte)
+                offsets_vtk = np.cumsum(cells_sizes, dtype=np.int)
+                T.append(types_elem_vtk)
+                O.append(offsets_vtk)
+                C.append(cells_vtk)
+            T = np.array(list(np.concatenate(T).flat), dtype=np.ubyte)
+            O = np.array(list(np.concatenate(O).flat), dtype=np.int)
+            C = np.array(list(np.concatenate(C).flat))
+            pug.SetCells(T, O, C)
+            assert ug.GetNumberOfCells() == len(O), (ug.GetNumberOfCells(), len(O))
+            return pug
+        else :
+            c = cgns.find_node(base, [_CGN(zone), _CGN(elem_name), _CGN("ElementConnectivity")])
+            cells = self._reader.read_array(c) - 1
+            cellsize = CELL_TYPE[celltype][1]
+            cells = cells.reshape(-1, cellsize)
+            ncells = cells.shape[0]
+            # Array format must be (num_vert1, vert1, vert2, ..., num_vert2, ...)
+            cells = np.hstack([np.full((ncells, 1), cellsize), cells]).reshape(-1)
+            celltypes = np.full((ncells,), CELL_TYPE[celltype][0], dtype=np.ubyte)
+            celllocations = np.cumsum(np.full((ncells,), cellsize, dtype=np.int))
+            self._np_arrays.extend([cells, celltypes, celllocations])
+            pug.SetCells(celltypes, celllocations, cells)
+            assert ug.GetNumberOfCells() == ncells, (ug.GetNumberOfCells(), ncells)
+            return pug 
 
     def _grid_location(self, node):
         r = "Vertex"
