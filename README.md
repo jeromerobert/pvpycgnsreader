@@ -6,6 +6,9 @@ change with each iteration (ex: moving objects).
 It wraps the CGNS native library which is included in Paraview so it get good
 performance. The wrapping is done with *ctypes* so there is no C/C++ to build.
 
+It has been successfully used on Linux, Windows and MacOS with Paraview 3.9 to
+3.11.
+
 # Using
 
 To use this reader in Paraview load `pvpycgnsreader.py` as a plugin using the
