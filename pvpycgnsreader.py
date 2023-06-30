@@ -213,7 +213,7 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         r = "Vertex"
         gl = cgns.child_with_label(node, "GridLocation_t")
         if len(gl) > 0:
-            r = self._reader.read_array(gl[0]).tobytes().decode()
+            r = self._reader.read_array(gl[0])
         return r
 
     def _add_cell_data(self, zone, node, ug):
@@ -233,11 +233,29 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
                 else:
                     ug.GetCellData().append(a, c.name)
 
+    def _zone_family(self, zone_node):
+        return self._reader.read_array(cgns.child_with_label(zone_node, "FamilyName_t")[0])
+
+    def _all_families(self):
+        zones = self._reader.nodes_by_labels(["CGNSBase_t", "Zone_t"])
+        l = {self._zone_family(z) for z in zones}
+        if None in l:
+            return None
+        else:
+            return sorted(list(l))
+
+    def _add_iterative_flow_sol(self, zonenode, timeid, ug):
+        fsp = cgns.find_node(zonenode, [_CGN("ZoneIterativeData"), _CGN("FlowSolutionPointers")])
+        fsps = self._reader.read_array(fsp)
+        flowsolutionid = None if fsps is None else fsps[timeid]
+        if flowsolutionid is not None:
+            flowsol = cgns.find_node(zonenode, [_CGN(flowsolutionid)])
+            self._add_cell_data(zonenode, flowsol, ug)
+
     def _request_iter_data(self, timesteps, outInfoVec):
         from vtkmodules.vtkCommonDataModel import vtkMultiBlockDataSet
-
         data_time = self._get_update_time(outInfoVec.GetInformationObject(0))
-        timeid = np.searchsorted(self._get_timesteps(), data_time)
+        timeid = np.searchsorted(timesteps, data_time)
         bid_node = self._reader.nodes_by_labels(["CGNSBase_t", "BaseIterativeData_t"])
         zonepointers = self._reader.read_array(cgns.child_with_name(bid_node,"ZonePointers"))
         if zonepointers is None:
@@ -246,28 +264,35 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
             zonelist = [zones[timeid].name]
         else:
             zonelist = zonepointers[timeid]
+        base = self._reader.nodes_by_labels(["CGNSBase_t"])[0]
+        # switch from Zone names to Zone nodes
+        zonelist = [cgns.child_with_name(base, z) for z in zonelist if z is not None]
+        # The ZonePointer node of the CGNS file mays contains bullshit so clean
+        zonelist = [z for z in zonelist if z is not None]
         mbds = vtkMultiBlockDataSet.GetData(outInfoVec, 0)
         mbds.GetInformation().Set(mbds.DATA_TIME_STEP(), data_time)
         self._np_arrays = []
-        base = self._reader.nodes_by_labels(["CGNSBase_t"])[0]
-        for iz, zone in enumerate(zonelist):
-            if zone is None:
-                continue
-            zonenode = cgns.child_with_name(base, zone)
-            if zonenode is None:
-                # The ZonePointer node of the CGNS file contains bullshit
-                continue
-            ug = self._create_unstructured_grid(zone)
-            mbds.SetBlock(iz, ug.VTKObject)
-            mbds.GetMetaData(iz).Set(mbds.NAME(), zone)
-            fsp = cgns.find_node(base, [_CGN(zone), _CGN("ZoneIterativeData"), _CGN("FlowSolutionPointers")])
-            fsps = self._reader.read_array(fsp)
-            flowsolutionid = None if fsps is None else fsps[timeid]
-            if flowsolutionid is None:
-                continue
-            flowsol = cgns.find_node(base, [_CGN(zone), _CGN(flowsol)])
-            #flowsol = self._reader.node(["Base", zone, flowsolutionid])
-            self._add_cell_data(zonenode, flowsol, ug)
+        fams = self._all_families()
+        if fams is None:
+            for iz, zonenode in enumerate(zonelist):
+                ug = self._create_unstructured_grid(zonenode.name)
+                mbds.SetBlock(iz, ug.VTKObject)
+                mbds.GetMetaData(iz).Set(mbds.NAME(), zonenode.name)
+                self._add_iterative_flow_sol(zonenode, timeid, ug)
+        else:
+            for ifam, fam in enumerate(fams):
+                famblock = vtkMultiBlockDataSet()
+                mbds.SetBlock(ifam, famblock)
+                mbds.GetMetaData(ifam).Set(mbds.NAME(), fam)
+                iz = 0
+                for zonenode in zonelist:
+                    if self._zone_family(zonenode) != fam:
+                        continue
+                    ug = self._create_unstructured_grid(zonenode.name)
+                    famblock.SetBlock(iz, ug.VTKObject)
+                    famblock.GetMetaData(iz).Set(famblock.NAME(), zonenode.name)
+                    iz += 1
+                    self._add_iterative_flow_sol(zonenode, timeid, ug)
         return 1
 
     def _request_noiter_data(self, outInfoVec):

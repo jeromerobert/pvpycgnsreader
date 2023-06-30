@@ -191,9 +191,9 @@ class _CGNSWrappers:
 
     def read_data(self, cgio_num, node):
         dim = list(reversed(node.dimensions))
-        isstring = node.dtype == "C1" and dim[-1] == 32
+        isstring = node.dtype == "C1"
         if isstring:
-            dtype = "|S32"
+            dtype = "|S{}".format(dim[-1])
             dim = dim[:-1]
         else:
             dtype = _CGNS_TO_NUMPY[node.dtype]
@@ -202,8 +202,11 @@ class _CGNSWrappers:
             cgio_num, node.id, node.dtype.encode(), buf.ctypes.data
         )
         if isstring:
-            buf = buf.tolist()
-            _bytetostr(buf)
+            if len(buf.shape) > 0:
+                buf = buf.tolist()
+                _bytetostr(buf)
+            else:
+                buf = buf.tobytes().decode("utf-8").strip()
         return buf
 
 
