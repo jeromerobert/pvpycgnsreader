@@ -33,6 +33,7 @@ CELL_TYPE = {
     17: (12, 8),  # HEXA_8 / VTK_HEXAHEDRON
     12: (14, 5), # PYRA_5 / VTK_PYRAMID
     14: (15, 6), #PENTA_6 / VTK_PENTAGONAL_PRISM
+    10: (10, 4) # TETRA_4 / VTK_TETRA
 }
 
 @smproxy.reader(
