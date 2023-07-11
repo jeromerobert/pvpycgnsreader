@@ -234,11 +234,14 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
                     ug.GetCellData().append(a, c.name)
 
     def _zone_family(self, zone_node):
+        z = cgns.child_with_label(zone_node, "FamilyName_t")
+        if not z :
+            return None
         return self._reader.read_array(cgns.child_with_label(zone_node, "FamilyName_t")[0])
 
     def _all_families(self):
         zones = self._reader.nodes_by_labels(["CGNSBase_t", "Zone_t"])
-        l = {self._zone_family(z) for z in zones}
+        l = {self._zone_family(z) for z in zones if z is not None}
         if None in l:
             return None
         else:
