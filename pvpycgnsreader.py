@@ -156,35 +156,26 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
             r.append(a.astype(np.single).reshape(-1, 1))
         return np.hstack(r)
 
-    def _create_ug_mixed(self, elem_nodes):
-        T = []
-        O = []
-        C = []
-        nb_elem_nodes = len(elem_nodes)
-        # FIXME iterate over nodes in the "ElementRange" order
-        for i in range(nb_elem_nodes):
-            elem_name = elem_nodes[i].name
-            c = cgns.child_with_name(elem_nodes[i], "ElementConnectivity")
-            c_offset = cgns.child_with_name(elem_nodes[i], "ElementStartOffset")
-            offsets_cgns = self._reader.read_array(c_offset)
-            num_cells = len(offsets_cgns)-1
-            cells_cgns = self._reader.read_array(c)
-            types_elem = cells_cgns[offsets_cgns[:-1]]
-            types_elem_vtk = np.zeros(num_cells, dtype=np.ubyte)
-            cells_sizes = np.zeros(num_cells, dtype=np.int)
-            for cgns_type, (vtk_ctype, vtk_csize) in CELL_TYPE.items():
-                elem = types_elem == cgns_type
-                types_elem_vtk[elem] = vtk_ctype
-                cells_sizes[elem] = vtk_csize
-            mask = np.ones_like(cells_cgns, dtype=bool)
-            mask[offsets_cgns[:-1]] = False
-            cells_vtk = cells_cgns[mask] - 1
-            T.append(types_elem_vtk)
-            O.append(cells_sizes)
-            C.append(cells_vtk)
-        return np.concatenate(T), np.concatenate(O), np.concatenate(C)
+    def _create_ug_mixed(self, elem_node):
+        c = cgns.child_with_name(elem_node, "ElementConnectivity")
+        c_offset = cgns.child_with_name(elem_node, "ElementStartOffset")
+        offsets_cgns = self._reader.read_array(c_offset)
+        num_cells = len(offsets_cgns)-1
+        cells_cgns = self._reader.read_array(c)
+        types_elem = cells_cgns[offsets_cgns[:-1]]
+        types_elem_vtk = np.zeros(num_cells, dtype=np.ubyte)
+        cells_sizes = np.zeros(num_cells, dtype=np.int)
+        for cgns_type, (vtk_ctype, vtk_csize) in CELL_TYPE.items():
+            elem = types_elem == cgns_type
+            types_elem_vtk[elem] = vtk_ctype
+            cells_sizes[elem] = vtk_csize
+        # The VTK cells array is the CGNS connectivity array without the cell types
+        mask = np.ones_like(cells_cgns, dtype=bool)
+        mask[offsets_cgns[:-1]] = False
+        cells_vtk = cells_cgns[mask] - 1
+        return types_elem_vtk, cells_sizes, cells_vtk
 
-    def _create_ug_notmixed(self, element_node, celltype):
+    def _create_ug_basic(self, element_node, celltype):
         c = cgns.child_with_name(element_node, "ElementConnectivity")
         cells = self._reader.read_array(c) - 1
         cellsize = CELL_TYPE[celltype][1]
@@ -199,19 +190,19 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
 
         ug = vtkUnstructuredGrid()
         pug = dsa.WrapDataObject(ug)
-        coords = self._read_grid_coordinates(zone)
-        self._np_arrays.append(coords)
-        pug.SetPoints(coords)
-        base = self._reader.nodes_by_labels(["CGNSBase_t"])[0]
-        elem_nodes = cgns.find_node(base, [_CGN(zone), "Elements_t"])
-        if len(elem_nodes) == 0:
-            print("WARNING: No elements founds")
-            return pug
-        celltype = self._reader.read_array(elem_nodes[0])[0]
-        if celltype == 20 : #Mixed
-            cell_types, cell_sizes, cells = self._create_ug_mixed(elem_nodes)
-        else :
-            cell_types, cell_sizes, cells = self._create_ug_notmixed(elem_nodes[0], celltype)
+        pug.SetPoints(self._read_grid_coordinates(zone.name))
+        elem_nodes = cgns.child_with_label(zone, "Elements_t")
+        data = [] # VTK (cell_types, cell_sizes, cells) for each Element_t
+        # FIXME: must iterate on Element_t in the "ElementRange" order
+        for elem_node in elem_nodes:
+            celltype = self._reader.read_array(elem_node)[0]
+            if celltype == 20 : #Mixed
+                data.append(self._create_ug_mixed(elem_node))
+            else :
+                data.append(self._create_ug_basic(elem_node, celltype))
+        cell_types = np.concatenate([x[0] for x in data])
+        cell_sizes = np.concatenate([x[1] for x in data])
+        cells = np.concatenate([x[2] for x in data])
         offset = np.insert(np.cumsum(cell_sizes), 0, 0)
         ug.SetCells(*_numpy_to_cell_array(cell_types, offset, cells))
         return pug
@@ -285,7 +276,7 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         fams = self._all_families()
         if fams is None:
             for iz, zonenode in enumerate(zonelist):
-                ug = self._create_unstructured_grid(zonenode.name)
+                ug = self._create_unstructured_grid(zonenode)
                 mbds.SetBlock(iz, ug.VTKObject)
                 mbds.GetMetaData(iz).Set(mbds.NAME(), zonenode.name)
                 self._add_iterative_flow_sol(zonenode, timeid, ug)
@@ -298,7 +289,7 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
                 for zonenode in zonelist:
                     if self._zone_family(zonenode) != fam:
                         continue
-                    ug = self._create_unstructured_grid(zonenode.name)
+                    ug = self._create_unstructured_grid(zonenode)
                     famblock.SetBlock(iz, ug.VTKObject)
                     famblock.GetMetaData(iz).Set(famblock.NAME(), zonenode.name)
                     iz += 1
@@ -311,7 +302,7 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         mbds = vtkMultiBlockDataSet.GetData(outInfoVec, 0)
         iz = 0
         for zone in self._reader.nodes_by_labels(["CGNSBase_t", "Zone_t"]):
-            ug = self._create_unstructured_grid(zone.name)
+            ug = self._create_unstructured_grid(zone)
             mbds.SetBlock(iz, ug.VTKObject)
             mbds.GetMetaData(iz).Set(mbds.NAME(), zone.name)
             iz += 1
