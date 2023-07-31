@@ -36,6 +36,24 @@ CELL_TYPE = {
     10: (10, 4) # TETRA_4 / VTK_TETRA
 }
 
+
+def _numpy_to_cell_array(cell_types, offset, connectivity):
+    """
+    Create a vtkCellArray from 2 numpy arrays and a vtkUnsignedCharArray cell type
+    array from a numpy array
+    """
+    from vtkmodules.vtkCommonDataModel import vtkCellArray
+    from vtkmodules.util.vtkConstants import VTK_ID_TYPE, VTK_UNSIGNED_CHAR
+    from vtk.util.numpy_support import numpy_to_vtk
+    ca = vtkCellArray()
+    ca.SetData(
+        numpy_to_vtk(offset, deep=1, array_type=VTK_ID_TYPE),
+        numpy_to_vtk(connectivity, deep=1, array_type=VTK_ID_TYPE),
+    )
+    ct = numpy_to_vtk(cell_types, deep=1, array_type=VTK_UNSIGNED_CHAR)
+    return ct, ca
+
+
 @smproxy.reader(
     name="PythonCGNSReader",
     label="Python-based CGNS Reader",
@@ -137,53 +155,45 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
             a = self._reader.read_array(coord)
             r.append(a.astype(np.single).reshape(-1, 1))
         return np.hstack(r)
-    
-    def _create_ug_mixed(self, elem_nodes, base, zone, ug, pug):
+
+    def _create_ug_mixed(self, elem_nodes):
         T = []
         O = []
         C = []
         nb_elem_nodes = len(elem_nodes)
+        # FIXME iterate over nodes in the "ElementRange" order
         for i in range(nb_elem_nodes):
             elem_name = elem_nodes[i].name
-            c = cgns.find_node(base, [_CGN(zone), _CGN(elem_name), _CGN("ElementConnectivity")])
-            c_offset = cgns.find_node(base, [_CGN(zone), _CGN(elem_name), _CGN("ElementStartOffset")])
+            c = cgns.child_with_name(elem_nodes[i], "ElementConnectivity")
+            c_offset = cgns.child_with_name(elem_nodes[i], "ElementStartOffset")
             offsets_cgns = self._reader.read_array(c_offset)
+            num_cells = len(offsets_cgns)-1
             cells_cgns = self._reader.read_array(c)
-            cells_vtk = np.copy(cells_cgns)-1
             types_elem = cells_cgns[offsets_cgns[:-1]]
-            types_elem_vtk = np.zeros(len(offsets_cgns)-1)
-            cells_sizes = np.zeros(len(offsets_cgns)-1)
-            for k,(i,j) in CELL_TYPE.items():
-                elem = np.where(types_elem == k)
-                cells_vtk[offsets_cgns[elem]] = j
-                types_elem_vtk[elem] = i
-                cells_sizes[elem] = j
-            types_elem_vtk = np.array(types_elem_vtk, dtype=np.ubyte)
-            offsets_vtk = np.cumsum(cells_sizes, dtype=np.int)
+            types_elem_vtk = np.zeros(num_cells, dtype=np.ubyte)
+            cells_sizes = np.zeros(num_cells, dtype=np.int)
+            for cgns_type, (vtk_ctype, vtk_csize) in CELL_TYPE.items():
+                elem = types_elem == cgns_type
+                types_elem_vtk[elem] = vtk_ctype
+                cells_sizes[elem] = vtk_csize
+            mask = np.ones_like(cells_cgns, dtype=bool)
+            mask[offsets_cgns[:-1]] = False
+            cells_vtk = cells_cgns[mask] - 1
             T.append(types_elem_vtk)
-            O.append(offsets_vtk)
+            O.append(cells_sizes)
             C.append(cells_vtk)
-        T = np.array(list(np.concatenate(T).flat), dtype=np.ubyte)
-        O = np.array(list(np.concatenate(O).flat), dtype=np.int)
-        C = np.array(list(np.concatenate(C).flat))
-        pug.SetCells(T, O, C)
-        assert ug.GetNumberOfCells() == len(O), (ug.GetNumberOfCells(), len(O))
-        return pug
-    
-    def _create_ug_notmixed(self, base, zone, elem_name, celltype, ug, pug):
-        c = cgns.find_node(base, [_CGN(zone), _CGN(elem_name), _CGN("ElementConnectivity")])
+        O = np.insert(np.cumsum(np.concatenate(O)), 0, 0)
+        return np.concatenate(T), O, np.concatenate(C)
+
+    def _create_ug_notmixed(self, element_node, celltype):
+        c = cgns.child_with_name(element_node, "ElementConnectivity")
         cells = self._reader.read_array(c) - 1
         cellsize = CELL_TYPE[celltype][1]
-        cells = cells.reshape(-1, cellsize)
-        ncells = cells.shape[0]
-        # Array format must be (num_vert1, vert1, vert2, ..., num_vert2, ...)
-        cells = np.hstack([np.full((ncells, 1), cellsize), cells]).reshape(-1)
+        ncells = cells.shape[0] // cellsize
         celltypes = np.full((ncells,), CELL_TYPE[celltype][0], dtype=np.ubyte)
         celllocations = np.cumsum(np.full((ncells,), cellsize, dtype=np.int))
-        self._np_arrays.extend([cells, celltypes, celllocations])
-        pug.SetCells(celltypes, celllocations, cells)
-        assert ug.GetNumberOfCells() == ncells, (ug.GetNumberOfCells(), ncells)
-        return pug
+        celllocations = np.insert(celllocations, 0, 0)
+        return celltypes, celllocations, cells
 
     def _create_unstructured_grid(self, zone):
         from vtkmodules.vtkCommonDataModel import vtkUnstructuredGrid
@@ -196,17 +206,15 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         pug.SetPoints(coords)
         base = self._reader.nodes_by_labels(["CGNSBase_t"])[0]
         elem_nodes = cgns.find_node(base, [_CGN(zone), "Elements_t"])
-        nb_elem_nodes = len(elem_nodes)
-        if nb_elem_nodes == 0:
+        if len(elem_nodes) == 0:
             print("WARNING: No elements founds")
             return pug
-        elem_name = elem_nodes[0].name
-        cellt = cgns.find_node(base, [_CGN(zone), _CGN(elem_name)])
-        celltype = self._reader.read_array(cellt)[0]
+        celltype = self._reader.read_array(elem_nodes[0])[0]
         if celltype == 20 : #Mixed
-            pug = self._create_ug_mixed(elem_nodes, base, zone, ug, pug)
+            cell_types, offset, cells = self._create_ug_mixed(elem_nodes)
         else :
-            pug = self._create_ug_notmixed(base, zone, elem_name, celltype, ug, pug)
+            cell_types, offset, cells = self._create_ug_notmixed(elem_nodes[0], celltype)
+        ug.SetCells(*_numpy_to_cell_array(cell_types, offset, cells))
         return pug
 
     def _grid_location(self, node):
