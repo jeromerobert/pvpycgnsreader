@@ -182,8 +182,7 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
             T.append(types_elem_vtk)
             O.append(cells_sizes)
             C.append(cells_vtk)
-        O = np.insert(np.cumsum(np.concatenate(O)), 0, 0)
-        return np.concatenate(T), O, np.concatenate(C)
+        return np.concatenate(T), np.concatenate(O), np.concatenate(C)
 
     def _create_ug_notmixed(self, element_node, celltype):
         c = cgns.child_with_name(element_node, "ElementConnectivity")
@@ -191,9 +190,8 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         cellsize = CELL_TYPE[celltype][1]
         ncells = cells.shape[0] // cellsize
         celltypes = np.full((ncells,), CELL_TYPE[celltype][0], dtype=np.ubyte)
-        celllocations = np.cumsum(np.full((ncells,), cellsize, dtype=np.int))
-        celllocations = np.insert(celllocations, 0, 0)
-        return celltypes, celllocations, cells
+        cellsizes = np.full((ncells,), cellsize, dtype=np.int)
+        return celltypes, cellsizes, cells
 
     def _create_unstructured_grid(self, zone):
         from vtkmodules.vtkCommonDataModel import vtkUnstructuredGrid
@@ -211,9 +209,10 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
             return pug
         celltype = self._reader.read_array(elem_nodes[0])[0]
         if celltype == 20 : #Mixed
-            cell_types, offset, cells = self._create_ug_mixed(elem_nodes)
+            cell_types, cell_sizes, cells = self._create_ug_mixed(elem_nodes)
         else :
-            cell_types, offset, cells = self._create_ug_notmixed(elem_nodes[0], celltype)
+            cell_types, cell_sizes, cells = self._create_ug_notmixed(elem_nodes[0], celltype)
+        offset = np.insert(np.cumsum(cell_sizes), 0, 0)
         ug.SetCells(*_numpy_to_cell_array(cell_types, offset, cells))
         return pug
 
