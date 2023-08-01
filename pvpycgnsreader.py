@@ -183,6 +183,58 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         celltypes = np.full((ncells,), CELL_TYPE[celltype][0], dtype=np.ubyte)
         cellsizes = np.full((ncells,), cellsize, dtype=int)
         return celltypes, cellsizes, cells
+    
+    #TODO: vectorize with numpy to improve performance
+    def _create_ug_ngon(self, elem_ngon, elem_nface):
+        c_ngon = cgns.child_with_name(elem_ngon, "ElementConnectivity")
+        c_nfaces = cgns.child_with_name(elem_nface, "ElementConnectivity")
+        c_ngon_offset = cgns.child_with_name(elem_ngon, "ElementStartOffset")
+        range_ngon = cgns.child_with_name(elem_ngon, "ElementRange")
+        offsets_ngon_cgns = self._reader.read_array(c_ngon_offset)
+        cells_ngon_cgns = self._reader.read_array(c_ngon)-1
+        cells_nface_cgns = self._reader.read_array(c_nfaces)
+        elem_range_ngon = self._reader.read_array(range_ngon)
+        cells_vtk = []
+        cells_sizes = []
+        types_vtk = []
+        o_faces = cgns.child_with_name(elem_nface, "ElementStartOffset")
+        offset_faces = self._reader.read_array(o_faces)
+        num_cells = len(offset_faces)-1
+        num_prev_faces = offset_faces[0]
+        for i in range(1, num_cells+1): #loop on cells
+            cells_size = 0
+            num_faces = offset_faces[i]- num_prev_faces
+            cells_vtk.append(num_faces)
+            cells_size += 1
+            list_ind_faces = [cells_nface_cgns[k] for k in range(num_prev_faces, num_prev_faces+num_faces)]
+            for face in list_ind_faces: #loop on faces
+                if face >= 0 :
+                    face = face - elem_range_ngon[0]
+                else :
+                    face = -(abs(face) - elem_range_ngon[0])
+                num_nodes = offsets_ngon_cgns[abs(face)+1] - offsets_ngon_cgns[abs(face)]
+                cells_size += num_nodes + 1
+                cells_vtk.append(num_nodes)
+                ind_nodes = []
+                beggining_of_face = offsets_ngon_cgns[abs(face)]
+                for j in range(num_nodes) : #loop on nodes
+                    ind_nodes.append(cells_ngon_cgns[beggining_of_face+j])
+                if face < 0 :
+                    ind_nodes.reverse()
+                for k in range(num_nodes):
+                    cells_vtk.append(ind_nodes[k])
+            cells_sizes.append(cells_size)
+            types_vtk.append(42)
+            num_prev_faces = offset_faces[i]
+
+        return types_vtk, cells_sizes, cells_vtk
+    
+    def _find_ngon_from_nface(self, elem_nodes):
+        for elem_node in elem_nodes :
+            celltype = self._reader.read_array(elem_node)[0]
+            if celltype == 22 :
+                return elem_node
+            
 
     def _create_unstructured_grid(self, zone):
         from vtkmodules.vtkCommonDataModel import vtkUnstructuredGrid
@@ -193,6 +245,16 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         pug.SetPoints(self._read_grid_coordinates(zone.name))
         elem_nodes = cgns.child_with_label(zone, "Elements_t")
         data = [] # VTK (cell_types, cell_sizes, cells) for each Element_t
+        
+        for elem_node in elem_nodes :
+            celltype = self._reader.read_array(elem_node)[0]
+            if celltype == 23 :
+                elem_nface = elem_node
+                elem_ngon = self._find_ngon_from_nface(elem_nodes)
+                data.append(self._create_ug_ngon(elem_ngon, elem_nface))
+                del elem_nodes[elem_nodes.index(elem_nface)]
+                del elem_nodes[elem_nodes.index(elem_ngon)]
+
         # FIXME: must iterate on Element_t in the "ElementRange" order
         for elem_node in elem_nodes:
             celltype = self._reader.read_array(elem_node)[0]
