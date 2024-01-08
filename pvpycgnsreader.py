@@ -164,7 +164,7 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         cells_cgns = self._reader.read_array(c)
         types_elem = cells_cgns[offsets_cgns[:-1]]
         types_elem_vtk = np.zeros(num_cells, dtype=np.ubyte)
-        cells_sizes = np.zeros(num_cells, dtype=np.int)
+        cells_sizes = np.zeros(num_cells, dtype=int)
         for cgns_type, (vtk_ctype, vtk_csize) in CELL_TYPE.items():
             elem = types_elem == cgns_type
             types_elem_vtk[elem] = vtk_ctype
@@ -181,7 +181,7 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         cellsize = CELL_TYPE[celltype][1]
         ncells = cells.shape[0] // cellsize
         celltypes = np.full((ncells,), CELL_TYPE[celltype][0], dtype=np.ubyte)
-        cellsizes = np.full((ncells,), cellsize, dtype=np.int)
+        cellsizes = np.full((ncells,), cellsize, dtype=int)
         return celltypes, cellsizes, cells
 
     def _create_unstructured_grid(self, zone):
