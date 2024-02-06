@@ -276,6 +276,24 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
             r = self._reader.read_array(gl[0])
         return r
 
+    def _find_vector_data(self, data_names):
+        vec_labels = []
+        vec_names = set()
+        for name in data_names:
+            minus = name.endswith("x")
+            maj = name.endswith("X")
+            if minus or maj:
+                sep = ""
+                if len(name) > 1 and name[-2] in ["_", " "]:
+                    sep = name[-2]
+                p = name[:-(len(sep) + 1)]
+                y = p + sep + ("y" if minus else "Y")
+                z = p + sep + ("z" if minus else "Z")
+                if y in data_names and z in data_names:
+                    vec_labels.append((p, [name, y, z]))
+                    vec_names.update([name, y, z])
+        return [n for n in data_names if n not in vec_names], vec_labels
+
     def _add_cell_data(self, zone, node, ug):
         if node.label != "FlowSolution_t":
             return
@@ -289,10 +307,17 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
             self._arrayselection.AddArray(c.name)
             if self._arrayselection.ArrayIsEnabled(c.name):
                 data_names.append(c.name)
+        data_names, vec_labels = self._find_vector_data(data_names)
         for name in data_names:
             n = cgns.find_node(base, [_CGN(zone.name), _CGN(node.name), _CGN(name)])
             a = self._reader.read_array(n)
             data.append(self._reader.read_array(n), name)
+        for name, comps in vec_labels:
+            a = []
+            for c in comps:
+                n = cgns.find_node(base, [_CGN(zone.name), _CGN(node.name), _CGN(c)])
+                a.append(self._reader.read_array(n))
+            data.append(np.vstack(a).T, name)
 
     def _zone_family(self, zone_node):
         z = cgns.child_with_label(zone_node, "FamilyName_t")
