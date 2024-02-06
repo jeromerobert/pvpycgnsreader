@@ -279,19 +279,20 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
     def _add_cell_data(self, zone, node, ug):
         if node.label != "FlowSolution_t":
             return
-        gl = self._grid_location(node)
+        base = self._reader.nodes_by_labels(["CGNSBase_t"])[0]
+        vertex_data = self._grid_location(node) == "Vertex"
+        data = ug.GetPointData() if vertex_data else ug.GetCellData()
+        data_names = []
         for c in node.children.values():
             if c.dtype == "C1":
                 continue
             self._arrayselection.AddArray(c.name)
             if self._arrayselection.ArrayIsEnabled(c.name):
-                base = self._reader.nodes_by_labels(["CGNSBase_t"])[0]
-                n = cgns.find_node(base, [_CGN(zone.name), _CGN(node.name), _CGN(c.name)])
-                a = self._reader.read_array(n)
-                if gl == "Vertex":
-                    ug.GetPointData().append(a, c.name)
-                else:
-                    ug.GetCellData().append(a, c.name)
+                data_names.append(c.name)
+        for name in data_names:
+            n = cgns.find_node(base, [_CGN(zone.name), _CGN(node.name), _CGN(name)])
+            a = self._reader.read_array(n)
+            data.append(self._reader.read_array(n), name)
 
     def _zone_family(self, zone_node):
         z = cgns.child_with_label(zone_node, "FamilyName_t")
