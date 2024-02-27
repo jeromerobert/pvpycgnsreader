@@ -77,6 +77,8 @@ CGNS_STATUS = {
     2: CGNSNodeNotFound,
     3: CGNSIncorrectPath,
     4: CGNSNoIndexDim,
+    8: Exception("ADF file open error"),
+    65: Exception("CHILDREN_IDS_NOT_FOUND"),
     33: Exception("Node had no data associated with it"),
     76: Exception("H5Gopen:open of a node group failed"),
     71: Exception("Node attribute doesn't exist"),
