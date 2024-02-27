@@ -34,7 +34,7 @@ def _load_lib(root):
     elif sys.platform == "win32" or sys.platform == "cygwin":
         templates = ["%s.dll", "lib%s.dll"]
     else:
-        templates = ["lib%s.so", "lib%s.so.1", "%s.so", "%s"]
+        templates = ["lib%s.so", "lib%s.so.4.4", "lib%s.so.4.2"]
     for t in templates:
         try:
             return ctypes.CDLL(t % root)
@@ -107,18 +107,24 @@ class _Prefixer:
 
 def _pvversion():
     """Return the paraview version string"""
-    from paraview import servermanager
-    maj = servermanager.vtkSMProxyManager.GetVersionMajor()
-    mn = servermanager.vtkSMProxyManager.GetVersionMinor()
-    return "{}.{}".format(maj, mn)
+    try:
+        from paraview import servermanager
+        maj = servermanager.vtkSMProxyManager.GetVersionMajor()
+        mn = servermanager.vtkSMProxyManager.GetVersionMinor()
+        return "{}.{}".format(maj, mn)
+    except ModuleNotFoundError:
+        return None
 
 
 class _CGNSWrappers:
     def __init__(self):
-        # This is the name of the CGNS lib in Paraview
-        libname, self.prefix, self.cgsize_t = "vtkcgns-pv"+_pvversion(), "vtkcgns_cgio_", c_size_t
-        # For debug
-        # libname, self.prefix, self.cgsize_t = "/path/to/libcgns.so", "cgio_", c_int
+        pv_version = _pvversion()
+        if pv_version:
+            # This is the name of the CGNS lib in Paraview
+            libname, self.prefix, self.cgsize_t = "vtkcgns-pv"+_pvversion(), "vtkcgns_cgio_", c_size_t
+        else:
+            # System or conda CGNS
+            libname, self.prefix, self.cgsize_t = "cgns", "cgio_", c_size_t
         self.lib = _load_lib(libname)
         # ier = cgio_open_file(const char *filename, int file_mode, int file_type, int *cgio_num);
         self._proto("open_file", [c_char_p, c_int, c_int, POINTER(c_int)])
