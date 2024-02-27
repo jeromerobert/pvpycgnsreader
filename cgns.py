@@ -162,9 +162,6 @@ class _CGNSWrappers:
         nc = c_int()
         self.lib.number_children(cgio_num, node_id, ctypes.byref(nc))
         nc = nc.value
-        ids = (c_double * nc)()
-        num_ret = c_int()
-        self.lib.children_ids(cgio_num, node_id, 1, nc, ctypes.byref(num_ret), ids)
         buf = create_string_buffer(32)
         self.lib.get_name(cgio_num, node_id, buf)
         name = buf.value.decode("utf-8")
@@ -177,9 +174,13 @@ class _CGNSWrappers:
         self.lib.get_dimensions(cgio_num, node_id, ctypes.byref(ndim), dims)
         dims = list(dims[: ndim.value])
         children = {}
-        for i in ids:
-            c = self._create_node(cgio_num, c_double(i))
-            children[c.name] = c
+        if nc > 0:
+            ids = (c_double * nc)()
+            num_ret = c_int()
+            self.lib.children_ids(cgio_num, node_id, 1, nc, ctypes.byref(num_ret), ids)
+            for i in ids:
+                c = self._create_node(cgio_num, c_double(i))
+                children[c.name] = c
         return CGNSNode(
             name=name,
             id=node_id,
