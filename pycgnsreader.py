@@ -374,14 +374,18 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
             self._request_iter_data(timesteps, out_info_vec)
         return 1
 
+    def SetTimeStep(self, t):
+        """Set the current time step"""
+        executive = self.GetExecutive()
+        reader_info = executive.GetOutputInformation(0)
+        reader_info.Set(executive.UPDATE_TIME_STEP(), t)
+
 
 def test(fname):
     from vtkmodules.vtkIOXML import vtkXMLMultiBlockDataWriter
 
     reader = PythonCNGSReader()
     reader.SetFileName(fname)
-    executive = reader.GetExecutive()
-    reader_info = executive.GetOutputInformation(0)
     writer = vtkXMLMultiBlockDataWriter()
     writer.SetInputConnection(reader.GetOutputPort())
     writer.SetDataModeToAppended()
@@ -389,7 +393,7 @@ def test(fname):
     writer.SetCompressorTypeToNone()
     timesteps = reader.GetTimestepValues()
     for i, t in enumerate(timesteps):
-        reader_info.Set(executive.UPDATE_TIME_STEP(), t)
+        reader.SetTimeStep(t)
         writer.SetFileName(f"testcgns_{i}.vtm")
         writer.Write()
 
