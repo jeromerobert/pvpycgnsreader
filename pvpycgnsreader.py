@@ -1,5 +1,4 @@
-
-from paraview.util.vtkAlgorithm import *
+from paraview.util.vtkAlgorithm import smproxy, smproperty, smdomain, smhint
 import sys
 import os
 
@@ -10,7 +9,7 @@ sys.modules.pop("pycgnsreader", None)
 from pycgnsreader import PythonCNGSReader
 
 
-def createModifiedCallback(anobject):
+def modified_callback(anobject):
     import weakref
 
     weakref_obj = weakref.ref(anobject)
@@ -33,7 +32,7 @@ def createModifiedCallback(anobject):
 class PVPythonCNGSReader(PythonCNGSReader):
     def __init__(self):
         super().__init__()
-        self._arrayselection.AddObserver("ModifiedEvent", createModifiedCallback(self))
+        self._arrayselection.AddObserver("ModifiedEvent", modified_callback(self))
 
     @smproperty.stringvector(name="FileName")
     @smdomain.filelist()

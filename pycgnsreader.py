@@ -10,9 +10,9 @@ CELL_TYPE = {
     7: (9, 4),  # QUAD_4 / VTK_QUAD
     5: (5, 3),  # TRI_3 / VTK_TRIANGLE
     17: (12, 8),  # HEXA_8 / VTK_HEXAHEDRON
-    12: (14, 5), # PYRA_5 / VTK_PYRAMID
-    14: (13, 6), #PENTA_6 / VTK_WEDGE
-    10: (10, 4) # TETRA_4 / VTK_TETRA
+    12: (14, 5),  # PYRA_5 / VTK_PYRAMID
+    14: (13, 6),  # PENTA_6 / VTK_WEDGE
+    10: (10, 4),  # TETRA_4 / VTK_TETRA
 }
 
 
@@ -24,6 +24,7 @@ def _numpy_to_cell_array(cell_types, offset, connectivity):
     from vtkmodules.vtkCommonDataModel import vtkCellArray
     from vtkmodules.util.vtkConstants import VTK_ID_TYPE, VTK_UNSIGNED_CHAR
     from vtk.util.numpy_support import numpy_to_vtk
+
     ca = vtkCellArray()
     ca.SetData(
         numpy_to_vtk(offset, deep=1, array_type=VTK_ID_TYPE),
@@ -40,6 +41,7 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         )
         self._filename = None
         from vtkmodules.vtkCommonCore import vtkDataArraySelection
+
         self._arrayselection = vtkDataArraySelection()
         self._modified = False
         self._reader = None
@@ -69,13 +71,13 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
             return None
         return self._reader.read_array(time_node)
 
-    def _get_update_time(self, outInfo):
+    def _get_update_time(self, out_info):
         executive = self.GetExecutive()
         timesteps = self._get_timesteps()
         if timesteps is None or len(timesteps) == 0:
             return None
-        elif outInfo.Has(executive.UPDATE_TIME_STEP()) and len(timesteps) > 0:
-            utime = outInfo.Get(executive.UPDATE_TIME_STEP())
+        elif out_info.Has(executive.UPDATE_TIME_STEP()) and len(timesteps) > 0:
+            utime = out_info.Get(executive.UPDATE_TIME_STEP())
             dtime = timesteps[0]
             for atime in timesteps:
                 if atime > utime:
@@ -90,13 +92,13 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
     def GetTimestepValues(self):
         return self._get_timesteps()
 
-    def RequestInformation(self, request, inInfoVec, outInfoVec):
+    def RequestInformation(self, request, in_info_vec, out_info_vec):
         timesteps = self._get_timesteps()
         executive = self.GetExecutive()
-        outInfo = outInfoVec.GetInformationObject(0)
+        out_info = out_info_vec.GetInformationObject(0)
         if timesteps is not None:
-            outInfo.Set(executive.TIME_STEPS(), timesteps, len(timesteps))
-            outInfo.Set(executive.TIME_RANGE(), timesteps[[0, -1]], 2)
+            out_info.Set(executive.TIME_STEPS(), timesteps, len(timesteps))
+            out_info.Set(executive.TIME_RANGE(), timesteps[[0, -1]], 2)
         return 1
 
     def _read_grid_coordinates(self, zone):
@@ -104,7 +106,9 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         r = []
         base = self._reader.nodes_by_labels(["CGNSBase_t"])[0]
         for l in ["X", "Y", "Z"]:
-            coord = cgns.find_node(base, [_CGN(zone), "GridCoordinates_t", _CGN("Coordinate" + l)])
+            coord = cgns.find_node(
+                base, [_CGN(zone), "GridCoordinates_t", _CGN("Coordinate" + l)]
+            )
             a = self._reader.read_array(coord)
             r.append(a.astype(np.single).reshape(-1, 1))
         return np.hstack(r)
@@ -113,7 +117,7 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         c = cgns.child_with_name(elem_node, "ElementConnectivity")
         c_offset = cgns.child_with_name(elem_node, "ElementStartOffset")
         offsets_cgns = self._reader.read_array(c_offset)
-        num_cells = len(offsets_cgns)-1
+        num_cells = len(offsets_cgns) - 1
         cells_cgns = self._reader.read_array(c)
         types_elem = cells_cgns[offsets_cgns[:-1]]
         types_elem_vtk = np.zeros(num_cells, dtype=np.ubyte)
@@ -137,14 +141,14 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         cellsizes = np.full((ncells,), cellsize, dtype=int)
         return celltypes, cellsizes, cells
 
-    #TODO: vectorize with numpy to improve performance
+    # TODO: vectorize with numpy to improve performance
     def _create_ug_ngon(self, elem_ngon, elem_nface):
         c_ngon = cgns.child_with_name(elem_ngon, "ElementConnectivity")
         c_nfaces = cgns.child_with_name(elem_nface, "ElementConnectivity")
         c_ngon_offset = cgns.child_with_name(elem_ngon, "ElementStartOffset")
         range_ngon = cgns.child_with_name(elem_ngon, "ElementRange")
         offsets_ngon_cgns = self._reader.read_array(c_ngon_offset)
-        cells_ngon_cgns = self._reader.read_array(c_ngon)-1
+        cells_ngon_cgns = self._reader.read_array(c_ngon) - 1
         cells_nface_cgns = self._reader.read_array(c_nfaces)
         elem_range_ngon = self._reader.read_array(range_ngon)
         cells_vtk = []
@@ -152,27 +156,32 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         types_vtk = []
         o_faces = cgns.child_with_name(elem_nface, "ElementStartOffset")
         offset_faces = self._reader.read_array(o_faces)
-        num_cells = len(offset_faces)-1
+        num_cells = len(offset_faces) - 1
         num_prev_faces = offset_faces[0]
-        for i in range(1, num_cells+1): #loop on cells
+        for i in range(1, num_cells + 1):  # loop on cells
             cells_size = 0
-            num_faces = offset_faces[i]- num_prev_faces
+            num_faces = offset_faces[i] - num_prev_faces
             cells_vtk.append(num_faces)
             cells_size += 1
-            list_ind_faces = [cells_nface_cgns[k] for k in range(num_prev_faces, num_prev_faces+num_faces)]
-            for face in list_ind_faces: #loop on faces
-                if face >= 0 :
+            list_ind_faces = [
+                cells_nface_cgns[k]
+                for k in range(num_prev_faces, num_prev_faces + num_faces)
+            ]
+            for face in list_ind_faces:  # loop on faces
+                if face >= 0:
                     face = face - elem_range_ngon[0]
-                else :
+                else:
                     face = -(abs(face) - elem_range_ngon[0])
-                num_nodes = offsets_ngon_cgns[abs(face)+1] - offsets_ngon_cgns[abs(face)]
+                num_nodes = (
+                    offsets_ngon_cgns[abs(face) + 1] - offsets_ngon_cgns[abs(face)]
+                )
                 cells_size += num_nodes + 1
                 cells_vtk.append(num_nodes)
                 ind_nodes = []
                 beggining_of_face = offsets_ngon_cgns[abs(face)]
-                for j in range(num_nodes) : #loop on nodes
-                    ind_nodes.append(cells_ngon_cgns[beggining_of_face+j])
-                if face < 0 :
+                for j in range(num_nodes):  # loop on nodes
+                    ind_nodes.append(cells_ngon_cgns[beggining_of_face + j])
+                if face < 0:
                     ind_nodes.reverse()
                 for k in range(num_nodes):
                     cells_vtk.append(ind_nodes[k])
@@ -183,9 +192,9 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         return types_vtk, cells_sizes, cells_vtk
 
     def _find_ngon_from_nface(self, elem_nodes):
-        for elem_node in elem_nodes :
+        for elem_node in elem_nodes:
             celltype = self._reader.read_array(elem_node)[0]
-            if celltype == 22 :
+            if celltype == 22:
                 return elem_node
 
     def _create_unstructured_grid(self, zone):
@@ -196,11 +205,11 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         pug = dsa.WrapDataObject(ug)
         pug.SetPoints(self._read_grid_coordinates(zone.name))
         elem_nodes = cgns.child_with_label(zone, "Elements_t")
-        data = [] # VTK (cell_types, cell_sizes, cells) for each Element_t
+        data = []  # VTK (cell_types, cell_sizes, cells) for each Element_t
 
-        for elem_node in elem_nodes :
+        for elem_node in elem_nodes:
             celltype = self._reader.read_array(elem_node)[0]
-            if celltype == 23 :
+            if celltype == 23:
                 elem_nface = elem_node
                 elem_ngon = self._find_ngon_from_nface(elem_nodes)
                 data.append(self._create_ug_ngon(elem_ngon, elem_nface))
@@ -210,9 +219,9 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         # FIXME: must iterate on Element_t in the "ElementRange" order
         for elem_node in elem_nodes:
             celltype = self._reader.read_array(elem_node)[0]
-            if celltype == 20 : #Mixed
+            if celltype == 20:  # Mixed
                 data.append(self._create_ug_mixed(elem_node))
-            else :
+            else:
                 data.append(self._create_ug_basic(elem_node, celltype))
         cell_types = np.concatenate([x[0] for x in data])
         cell_sizes = np.concatenate([x[1] for x in data])
@@ -234,16 +243,17 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         for name in data_names:
             minus = name.endswith("x")
             maj = name.endswith("X")
-            if minus or maj:
-                sep = ""
-                if len(name) > 1 and name[-2] in ["_", " "]:
-                    sep = name[-2]
-                p = name[:-(len(sep) + 1)]
-                y = p + sep + ("y" if minus else "Y")
-                z = p + sep + ("z" if minus else "Z")
-                if y in data_names and z in data_names:
-                    vec_labels.append((p, [name, y, z]))
-                    vec_names.update([name, y, z])
+            if not (minus or maj):
+                continue
+            sep = ""
+            if len(name) > 1 and name[-2] in ["_", " "]:
+                sep = name[-2]
+            p = name[: -(len(sep) + 1)]
+            y = p + sep + ("y" if minus else "Y")
+            z = p + sep + ("z" if minus else "Z")
+            if y in data_names and z in data_names:
+                vec_labels.append((p, [name, y, z]))
+                vec_names.update([name, y, z])
         return [n for n in data_names if n not in vec_names], vec_labels
 
     def _add_cell_data(self, zone, node, ug):
@@ -262,7 +272,6 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         data_names, vec_labels = self._find_vector_data(data_names)
         for name in data_names:
             n = cgns.find_node(base, [_CGN(zone.name), _CGN(node.name), _CGN(name)])
-            a = self._reader.read_array(n)
             data.append(self._reader.read_array(n), name)
         for name, comps in vec_labels:
             a = []
@@ -273,9 +282,11 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
 
     def _zone_family(self, zone_node):
         z = cgns.child_with_label(zone_node, "FamilyName_t")
-        if not z :
+        if not z:
             return None
-        return self._reader.read_array(cgns.child_with_label(zone_node, "FamilyName_t")[0])
+        return self._reader.read_array(
+            cgns.child_with_label(zone_node, "FamilyName_t")[0]
+        )
 
     def _all_families(self):
         zones = self._reader.nodes_by_labels(["CGNSBase_t", "Zone_t"])
@@ -286,19 +297,24 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
             return sorted(list(l))
 
     def _add_iterative_flow_sol(self, zonenode, timeid, ug):
-        fsp = cgns.find_node(zonenode, [_CGN("ZoneIterativeData"), _CGN("FlowSolutionPointers")])
+        fsp = cgns.find_node(
+            zonenode, [_CGN("ZoneIterativeData"), _CGN("FlowSolutionPointers")]
+        )
         fsps = self._reader.read_array(fsp)
         flowsolutionid = None if fsps is None else fsps[timeid]
         if flowsolutionid is not None:
             flowsol = cgns.find_node(zonenode, [_CGN(flowsolutionid)])
             self._add_cell_data(zonenode, flowsol, ug)
 
-    def _request_iter_data(self, timesteps, outInfoVec):
+    def _request_iter_data(self, timesteps, out_info_vec):
         from vtkmodules.vtkCommonDataModel import vtkMultiBlockDataSet
-        data_time = self._get_update_time(outInfoVec.GetInformationObject(0))
+
+        data_time = self._get_update_time(out_info_vec.GetInformationObject(0))
         timeid = np.searchsorted(timesteps, data_time)
         bid_node = self._reader.nodes_by_labels(["CGNSBase_t", "BaseIterativeData_t"])
-        zonepointers = self._reader.read_array(cgns.child_with_name(bid_node,"ZonePointers"))
+        zonepointers = self._reader.read_array(
+            cgns.child_with_name(bid_node, "ZonePointers")
+        )
         if zonepointers is None:
             # No ZonePointers, we assume one Zone by time step
             zones = self._reader.nodes_by_labels(["CGNSBase_t", "Zone_t"])
@@ -310,7 +326,7 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         zonelist = [cgns.child_with_name(base, z) for z in zonelist if z is not None]
         # The ZonePointer node of the CGNS file mays contains bullshit so clean
         zonelist = [z for z in zonelist if z is not None]
-        mbds = vtkMultiBlockDataSet.GetData(outInfoVec, 0)
+        mbds = vtkMultiBlockDataSet.GetData(out_info_vec, 0)
         mbds.GetInformation().Set(mbds.DATA_TIME_STEP(), data_time)
         self._np_arrays = []
         fams = self._all_families()
@@ -336,10 +352,10 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
                     self._add_iterative_flow_sol(zonenode, timeid, ug)
         return 1
 
-    def _request_noiter_data(self, outInfoVec):
+    def _request_noiter_data(self, out_info_vec):
         from vtkmodules.vtkCommonDataModel import vtkMultiBlockDataSet
 
-        mbds = vtkMultiBlockDataSet.GetData(outInfoVec, 0)
+        mbds = vtkMultiBlockDataSet.GetData(out_info_vec, 0)
         iz = 0
         for zone in self._reader.nodes_by_labels(["CGNSBase_t", "Zone_t"]):
             ug = self._create_unstructured_grid(zone)
@@ -350,16 +366,18 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
                 self._add_cell_data(zone, flowsol, ug)
         return 1
 
-    def RequestData(self, request, inInfoVec, outInfoVec):
+    def RequestData(self, request, in_info_vec, out_info_vec):
         timesteps = self._get_timesteps()
         if timesteps is None:
-            self._request_noiter_data(outInfoVec)
+            self._request_noiter_data(out_info_vec)
         else:
-            self._request_iter_data(timesteps, outInfoVec)
+            self._request_iter_data(timesteps, out_info_vec)
         return 1
+
 
 def test(fname):
     from vtkmodules.vtkIOXML import vtkXMLMultiBlockDataWriter
+
     reader = PythonCNGSReader()
     reader.SetFileName(fname)
     executive = reader.GetExecutive()
@@ -374,6 +392,7 @@ def test(fname):
         reader_info.Set(executive.UPDATE_TIME_STEP(), t)
         writer.SetFileName(f"testcgns_{i}.vtm")
         writer.Write()
+
 
 if __name__ == "__main__":
     test("test.cgns")
