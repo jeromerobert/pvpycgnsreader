@@ -46,6 +46,7 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         self._modified = False
         self._reader = None
         self._np_arrays = []
+        self._current_time = None
 
     def SetFileName(self, name):
         """Specify filename for the file to read."""
@@ -85,6 +86,8 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
                 else:
                     dtime = atime
             return dtime
+        elif self._current_time is not None:
+            return self._current_time
         else:
             assert len(timesteps) > 0
             return timesteps[0]
@@ -379,6 +382,7 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         executive = self.GetExecutive()
         reader_info = executive.GetOutputInformation(0)
         reader_info.Set(executive.UPDATE_TIME_STEP(), t)
+        self._current_time = t
 
 
 def test(fname):
