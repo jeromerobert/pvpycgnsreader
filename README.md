@@ -29,7 +29,7 @@ timesteps = reader.GetTimestepValues()
 reader.SetTimeStep(timesteps[4])
 reader.Update()
 # a vtkMultiBlockDataSet
-m = reader.GetOutput()
+m = reader.GetOutputDataObject(0)
 ```
 
 # Hacking
