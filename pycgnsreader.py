@@ -102,6 +102,14 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         if timesteps is not None:
             out_info.Set(executive.TIME_STEPS(), timesteps, len(timesteps))
             out_info.Set(executive.TIME_RANGE(), timesteps[[0, -1]], 2)
+        for zone in self._reader.nodes_by_labels(["CGNSBase_t", "Zone_t"]):
+            for flowsol in zone.children.values():
+                if flowsol.label != "FlowSolution_t":
+                    continue
+                for c in flowsol.children.values():
+                    if c.dtype == "C1":
+                        continue
+                    self._arrayselection.AddArray(c.name)
         return 1
 
     def _read_grid_coordinates(self, zone):
@@ -259,19 +267,18 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
                 vec_names.update([name, y, z])
         return [n for n in data_names if n not in vec_names], vec_labels
 
+    def _enabled_data_arrays(self):
+        a = self._arrayselection
+        r = range(a.GetNumberOfArrays())
+        return [a.GetArrayName(i) for i in r if a.GetArraySetting(i)]
+
     def _add_cell_data(self, zone, node, ug):
         if node.label != "FlowSolution_t":
             return
         base = self._reader.nodes_by_labels(["CGNSBase_t"])[0]
         vertex_data = self._grid_location(node) == "Vertex"
         data = ug.GetPointData() if vertex_data else ug.GetCellData()
-        data_names = []
-        for c in node.children.values():
-            if c.dtype == "C1":
-                continue
-            self._arrayselection.AddArray(c.name)
-            if self._arrayselection.ArrayIsEnabled(c.name):
-                data_names.append(c.name)
+        data_names = self._enabled_data_arrays()
         data_names, vec_labels = self._find_vector_data(data_names)
         for name in data_names:
             n = cgns.find_node(base, [_CGN(zone.name), _CGN(node.name), _CGN(name)])
