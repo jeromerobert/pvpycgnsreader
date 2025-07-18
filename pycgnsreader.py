@@ -282,13 +282,18 @@ class PythonCNGSReader(VTKPythonAlgorithmBase):
         data_names, vec_labels = self._find_vector_data(data_names)
         for name in data_names:
             n = cgns.find_node(base, [_CGN(zone.name), _CGN(node.name), _CGN(name)])
-            data.append(self._reader.read_array(n), name)
+            a = self._reader.read_array(n)
+            if a is not None:
+                data.append(a, name)
         for name, comps in vec_labels:
             a = []
             for c in comps:
                 n = cgns.find_node(base, [_CGN(zone.name), _CGN(node.name), _CGN(c)])
-                a.append(self._reader.read_array(n))
-            data.append(np.vstack(a).T, name)
+                r = self._reader.read_array(n)
+                if r is not None:
+                    a.append(r)
+            if len(a) > 0:
+                data.append(np.vstack(a).T, name)
 
     def _zone_family(self, zone_node):
         z = cgns.child_with_label(zone_node, "FamilyName_t")
