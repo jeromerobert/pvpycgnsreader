@@ -32,7 +32,7 @@ def _load_lib(root):
             "%s",
         ]
     elif sys.platform == "win32" or sys.platform == "cygwin":
-        templates = ["%s.dll", "lib%s.dll"]
+        templates = ["%s.dll", "lib%s.dll", "%sdll.dll"]
     else:
         templates = ["lib%s.so", "lib%s.so.4.4", "lib%s.so.4.2"]
     for t in templates:
