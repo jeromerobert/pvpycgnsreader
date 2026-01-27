@@ -5,8 +5,10 @@ from vtkmodules.util.vtkAlgorithm import VTKPythonAlgorithmBase
 
 
 # Map CGNS type to (VTK type, VTK num vertex)
-# according to IO/CGNS/vtkCGNSReaderInternal.cxx and Common/DataModel/vtkCellType.h
+# according to IO/CGNS/vtkCGNSReaderInternal.cxx, Common/DataModel/vtkCellType.h
+# and cgnslib.h
 CELL_TYPE = {
+    3: (3, 2), # BAR_2 / VTK_LINE
     7: (9, 4),  # QUAD_4 / VTK_QUAD
     5: (5, 3),  # TRI_3 / VTK_TRIANGLE
     17: (12, 8),  # HEXA_8 / VTK_HEXAHEDRON
