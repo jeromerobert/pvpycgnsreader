@@ -7,7 +7,7 @@ It wraps the CGNS native library which is included in Paraview so it get good
 performance. The wrapping is done with *ctypes* so there is no C/C++ to build.
 
 It has been successfully used on Linux, Windows and MacOS with Paraview 5.9 to
-5.13.
+6.0.
 
 # Using
 
